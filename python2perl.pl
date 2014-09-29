@@ -22,7 +22,11 @@ if ($line =~ /^#!/ && $. == 1) {
 	} elsif ($line =~ /^\s*print\s*(.*)\s*$/) {
 		# Python's print print a new-line character by default
 		# so we need to add it explicitly to the Perl print statement
+		if ($line =~ /^\s*print\s*"(.*)"\s*$/) {
+			$pythonLine = "print \"$1\\n\";";
+		}else{
 		$pythonLine = "print \"$1\\n\";";
+		}
 	}
 }
 
@@ -34,7 +38,7 @@ if ($line =~ /^[^0-9][a-zA-Z_0-9]*\s*=\s*/) {
 		if(not($line ~~ @variables)){
 		push @variables, $line;
 		}
-	}elsif ($line =~ /^\s*print\s*(.*)([+\-*\/%])(.*)\s*$/) {
+	}elsif ($line =~ /^\s*print\s*(.*)([+\-*\/%])+(.*)\s*$/) {
 		$pythonLine = "print $1$2$3, \"\\n\";";
 	}
 foreach my $var(@variables){
