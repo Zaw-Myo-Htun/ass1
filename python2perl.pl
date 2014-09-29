@@ -35,8 +35,6 @@ if ($line =~ /^[^0-9][a-zA-Z_0-9]*\s*=\s*/) {
 		push @variables, $line;
 		}
 	}elsif ($line =~ /^\s*print\s*(.*)([+\-*\/%])(.*)\s*$/) {
-		# Python's print print a new-line character by default
-		# so we need to add it explicitly to the Perl print statement
 		$pythonLine = "print $1$2$3, \"\\n\";";
 	}
 foreach my $var(@variables){
