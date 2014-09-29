@@ -1,26 +1,42 @@
 #!/usr/bin/perl -w
-
+@variables = ();
+$pythonLine = "";
 while ($line = <>) {
-	if ($line =~ /^#!/ && $. == 1) {
+	$pythonLine = $line;
+	subset0($line);
+	subset1($line);
+	print $pythonLine;
+}
+
+sub subset0{
+	$line = "@_";
+if ($line =~ /^#!/ && $. == 1) {
 	
 		# translate #! line 
-		
-		print "#!/usr/bin/perl -w\n";
+		$pythonLine =  "#!/usr/bin/perl -w\n";
 	} elsif ($line =~ /^\s*#/ || $line =~ /^\s*$/) {
 	
 		# Blank & comment lines can be passed unchanged
-		
-		print $line;
-	} elsif ($line =~ /^\s*print\s*"(.*)"\s*$/) {
-	
+		$line = $pythonLine;
+	} elsif ($line =~ /^\s*print\s*(.*)\s*$/) {
 		# Python's print print a new-line character by default
 		# so we need to add it explicitly to the Perl print statement
-		
-		print "print \"$1\\n\";\n";
-	} else {
-	
-		# Lines we can't translate are turned into comments
-		
-		print "#$line\n";
+		$pythonLine = "print \"$1\\n\";\n";
+	}
+}
+
+sub subset1{
+	$line = "@_";
+if ($line =~ /^[a-zA-Z_]*\s*=\s*/) {
+		$line =~ s/\s*=.*//;
+		if(not($line ~~ @variables)){
+		chomp $line;
+		push @variables, $line;
+		}
+	}
+foreach my $var(@variables){
+	if ($pythonLine =~ /$var/){
+		$pythonLine =~ s/$var/\$$var/g;	
+		}
 	}
 }
