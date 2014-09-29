@@ -1,7 +1,4 @@
-#!/usr/bin/perl
-# Starting point for COMP2041/9041 assignment 
-# http://www.cse.unsw.edu.au/~cs2041/assignments/python2perl
-# written by andrewt@cse.unsw.edu.au September 2014
+#!/usr/bin/perl -w
 
 while ($line = <>) {
 	if ($line =~ /^#!/ && $. == 1) {
