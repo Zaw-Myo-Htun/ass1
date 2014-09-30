@@ -2,38 +2,41 @@
 @variables = ();
 $perlLine = "";
 $a="";
-$b="";
+$result="";
 
 while ($line = <>) {
 	chomp $line;
-	$b = main($line);
+	#@lines = split(/;/,$line);
+	#foreach $b (@lines){
+	$result = runSubsets($line);
 	putDollarSign();
 	putsemicolon();
-	print "$b";
+	print "$result";
+	#}
 }
 
 sub putDollarSign{
 	foreach my $var(@variables){
-		#print "$a and $var\n";
-		if ($b =~ /($var)/){
-			$b =~ s/$var/\$$var/g;	
+		if ($result =~ /($var)/){
+			$result =~ s/$var/\$$var/g;	
 		}
 	}
 }
 
 sub putsemicolon{
-my @lines = split /\n/, $b;
-$b = "";
+my @lines = split /\n/, $result;
+$result = "";
+
 foreach my $line (@lines) {
-	if(not($line =~ /^#!/ && $. == 1) && not($line =~ /^\s*#/ || $line =~ /^\s*$/) && $line =~ /^[^(if)\}]/){
+	if(not($line =~ /^#!/ && $. == 1) && not($line =~ /^\s*#/ || $line =~ /^\s*$/) && not($line =~ /(^[\}]|[\{\}]$)/)){
 		$line .= ";";
 	}
-	$b .= "$line\n";
+	$result .= "$line\n";
 }	
 }
 
 
-sub main{
+sub runSubsets{
 	$a = "@_";
 	$pythonLine = "@_";
 	if (($pythonLine =~ /^#!/ && $. == 1) || ($pythonLine =~ /^\s*#/ || $line =~ /^\s*$/) || 
@@ -43,14 +46,14 @@ sub main{
 	if($pythonLine =~ /^[^0-9][a-zA-Z_0-9]*\s*=\s*/ || $pythonLine =~ /^\s*print\s*(.*)([+\-*\/%])+(.*)\s*$/){
 	$a = subset1($pythonLine);
 	}
-	if ($pythonLine =~ /^\s*if\s*(.*):(.*)/){
+	if ($pythonLine =~ /^\s*(if|while)\s*(.*):(.*)/){
 	$a = subset2($pythonLine);
 	}
 	return $a;
 }
 
 
-sub subset0{
+sub subset0{   #print
 	$pythonLine = "@_";
 	$perlLine = "@_";
 	if ($pythonLine =~ /^#!/ && $. == 1) {
@@ -60,18 +63,12 @@ sub subset0{
 		# Blank & comment lines can be passed unchanged
 		$perlLine = $pythonLine;
 	} elsif ($pythonLine =~ /^\s*print\s*(.*)\s*$/) {
-		# Python's print print a new-line character by default
-		# so we need to add it explicitly to the Perl print statement
-		if ($pythonLine =~ /^\s*print\s*"(.*)"\s*$/) {
-			$perlLine = "print \"$1\\n\"";
-		}else{
 		$perlLine = "print \"$1\\n\"";
-		}
 	}
 	return $perlLine;
 }
 
-sub subset1{
+sub subset1{	#variable and arithmetic operator in print statement
 	$pythonLine = "@_";
 	$perlLine = "@_";
 	if ($pythonLine =~ /^[^0-9][a-zA-Z_0-9]*\s*=\s*/) {	#traslate variable = value line
@@ -90,10 +87,15 @@ sub subset1{
 sub subset2{
 	$pythonLine = "@_";
 	$perlLine = "@_";
-	if ($pythonLine =~ /^\s*if\s*(.*):(.*)/){   #single line if
-		$line1 = "if (" . main($1) . "){\n";
-		$line2 = main($2) . "\n}";
-		$perlLine = $line1 . $line2;
+	$line1 = "";
+	$line2 = "";
+	if ($pythonLine =~ /^\s*(if|while)\s*(.*):(.*)/){   #single line if and while
+		$line1 = "$1 (" . runSubsets($2) . "){\n";
+		@lines = split(/;/,$3);
+		foreach $l(@lines){
+		$line2 .= runSubsets($l) . "\n";
+		}
+		$perlLine = $line1 . $line2 . "}";
 	}
 	return $perlLine;
 }
