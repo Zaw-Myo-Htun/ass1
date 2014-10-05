@@ -1,156 +1,132 @@
 #!/usr/bin/perl -w
 
-@variables = ();
-%indentation = ();
-$perlLine = "";
-$a = "";
-$result = "";
-$nOfCarlyBracket = 0;
-$last = "";
+@variables = ();					#all variables detected while processing each line
+%indentation = ();					#key - number of open bracket,value - number of spaces in front
+$perlLine = "";						#return from subset methods.
+$result = "";						#final perl line to be printed;
+$nOfOpeningCarlyBracket = 0;		#number of opening bracket use in the line (if, elsif , while , for ....)
+$lastLine = "";						#used for adding closing bracket.
+
 while ($line = <>) {
-	$last = $line if eof;
+	$lastLine = $line if eof;		#get the last line to be used when closing bracket still left to be added.
 	chomp $line;
 	$line =~ s/\s+$//;
-	putClose($line);
-	#@lines = split(/;/,$line);
-	#foreach $b (@lines){
-	#if($last eq ""){   # can combine if and elsif
-	#putCloseBracket();
-	#}elsif($last ne "" && (($last =~ /^\s*[^(elif|else)]/ && $last =~ /^[a-zA-Z]+/))){
-	#putCloseBracket();
-	#}
+	putClosingCarlyBracket($line);  #have to be here, can't be after runSubsets... (to skip the first while, if , for, etc line)
 	$result = runSubsets($line);
 	changeSTDIN();
-	
 	putsemicolon();
 	putDollarSign();
 	print "$result";
-	if($last ne "" && $last !~ /^[a-zA-Z]+/){
-	#putCloseBracket1(); 
-	putClose1();
-	}
-	#}
-}
-foreach my $var(@variables){
-		print "\n$var --- ";
-}
-sub putDollarSign{
-	foreach my $var(@variables){
-		#if ($result =~ /^$var[^a-zA-Z]|([^a-zA-Z])$var([^a-zA-Z])/){
-			if($result =~ /^$var[^a-zA-Z]/){
-			$result =~ s/$var/\$$var/g;
-			}
-			elsif($result =~ /([^a-zA-Z])$var([^a-zA-Z])/){
-			$preVar = $1;
-			$postVar = $2;
-				$result =~ s/([^a-zA-Z])$var([^a-zA-Z])/$preVar\$$var$postVar/g;
-			}
-			if($result =~ /(".*)(\$$var)(.*")/){
-				$result =~ s/(".*)(\$$var)(.*")/$1$var$3/g; #$number = $number . " $number number";
-															#$number = $number . " number ";
-															#variable inside " " -- > one is working more than one is not.
-			}
-			
-		#}
+	if($lastLine ne "" && $lastLine !~ /^[a-zA-Z]+/){
+		putLastClosingCarlyBracket();
 	}
 }
 
-sub putsemicolon{
-my @lines = split /\n/, $result;
-$result = "";
-foreach my $line (@lines) {
-	if(not($line =~ /^#!/ && $. == 1) && not($line =~ /^\s*#/ || $line =~ /^\s*$/) && not($line =~ /(^[\}]|[\{;\}]$)/)){
-		$line .= ";";
+sub putDollarSign{					#put dollar in front of variable
+	%vars = ();						#key - end position of variables found(matched regex) in line, value - variable names
+	$index = 0;
+	$num = 0;
+	foreach my $var (@variables){
+			while($result =~ m/^$var[^a-zA-Z]/g){
+				$vars{pos($result)} = $var;
+			}
+			while($result =~ m/([^a-zA-Z])$var([^a-zA-Z])/g){
+				$vars{pos($result)} = $var;
+			}		
 	}
-	$result .= "$line\n";
-}	
+	foreach my $p (sort {$a<=>$b} keys %vars ){
+		$lenOfVar = length($vars{$p})+1;
+		$index = $p - $lenOfVar + $num;			#index - index of first character of variable
+		substr($result,$index,0,"\$");
+		$num++;									#add one because length of result line have been added $
+	}
 }
 
-sub changeSTDIN{
+sub putsemicolon{					#put ; every single line apart from those start with #!,#,},etc or end with },etc or empty line
+	my @lines = split /\n/, $result;		
+	$result = "";
+	foreach my $line (@lines) {
+		if(not($line =~ /^#!/ && $. == 1) && not($line =~ /^\s*#/ || $line =~ /^\s*$/) && not($line =~ /(^[\}]|[\{;\}]$)/)){
+			$line .= ";";
+		}
+		$result .= "$line\n";
+	}
+}
+
+sub changeSTDIN{					# change sys.stdin.readline to STDIN ...
 	if($result =~ /.*sys.stdin.readline\(\)/){
 		 $result =~ s/sys.stdin.readline\(\)/<STDIN>/g;
 	}
 }
-sub putClose{
-	foreach my $key (sort {$b <=> $a} keys %indentation ){
-	 $value = $indentation{$key};
-	 $value =~ /^(\s*)/;
-	 my $lengthOfWhiteSpace = length($1);
- 	 if("@_" =~ /^(\s*)/){
-			my $lengthOfWhiteSpace1 = length($1);
-			if ($lengthOfWhiteSpace >= $lengthOfWhiteSpace1){
+
+sub putClosingCarlyBracket{			# put } function
+	foreach my $key (sort {$b <=> $a} keys %indentation ){		#sorted by descending order to process the most recent indentation
+		$value = $indentation{$key};
+		$value =~ /^(\s*)/;
+		my $lengthOfWhiteSpace = length($1);					#lengthOfWhiteSpace - length of white space in front of the line end in { (start with for, if, etc)
+ 		if("@_" =~ /^(\s*)/){
+			my $lengthOfWhiteSpace1 = length($1);				#lengthOfWhiteSpace1 - length of white space in front of every line
+			if ($lengthOfWhiteSpace >= $lengthOfWhiteSpace1){ 	#comparing the two white spaces, add } if $lengthOfWhiteSpace >= $lengthOfWhiteSpace1
 				print "$value}\n";
 				delete $indentation{$key};
+				$nOfOpeningCarlyBracket--;
 			}
 		}
 	}
 }
-sub putClose1{
+
+sub putLastClosingCarlyBracket{		#put } function if the last line and still left indentation
 	foreach my $key (sort {$b <=> $a} keys %indentation ){
 		$value = $indentation{$key};
 		print "$value}\n";
 		delete $indentation{$key};
-	}
-}
-sub putCloseBracket{
-	if($nOfCarlyBracket>0 && (($line =~ /^\s*[^(elif|else)]/ && $line =~ /^[a-zA-Z]+/))){
-		while($nOfCarlyBracket>0){
-			print "}\n";
-			$nOfCarlyBracket--;
-		}
-	}
-}
-
-sub putCloseBracket1{
-	if($nOfCarlyBracket>0 && $last !~ /^[a-zA-Z]+/){
-		while($nOfCarlyBracket>0){
-			print "}\n";
-			$nOfCarlyBracket--;
-		}
+		$nOfOpeningCarlyBracket--;
 	}
 }
 
 sub runSubsets{
-	$a = "@_";
-	$pythonLine1 = "@_";
-	if (($pythonLine1 =~ /^#!/ && $. == 1) || ($pythonLine1 =~ /^\s*#/ || $line =~ /^\s*$/) || 
-	($pythonLine1 =~ /^(\s*)print\s*"(.*)"\s*$/) || $pythonLine1 =~ /^(\s*)print$/ || $pythonLine1 =~ /^(\s*)print\s*(.*)\s*$/){
-	$a = subset0($pythonLine1);
+	$pythonString = "@_";
+	if (($pythonString =~ /^#!/ && $. == 1) || ($pythonString =~ /^\s*#/ || $pythonString =~ /^\s*$/) || 
+	($pythonString =~ /^(\s*)print\s*"(.*)"\s*$/) || $pythonString =~ /^(\s*)print$/ || 
+	$pythonString =~ /^(\s*)print\s*(.*)\s*$/){
+		$pythonString = subset0($pythonString);
 	}
-	if($pythonLine1 =~ /^\s*[^0-9][a-zA-Z_0-9]*\s*=\s*/ || $pythonLine1 =~ /^\s*print\s*(.*)([+\-*\/%])+(.*)\s*$/){
-	$a = subset1($pythonLine1);
+	if($pythonString =~ /^\s*[^0-9][a-zA-Z_0-9]*\s*=\s*/ || $pythonString =~ /^\s*print\s*(.*)([+\-*\/%])+(.*)\s*$/){
+		$pythonString = subset1($pythonString);
 	}
-	if ($pythonLine1 =~ /^\s*(if|while)\s*(.*):([^:]+)/ || $pythonLine1 =~ /^\s*(break|continue)/){
-	$a = subset2($pythonLine1);
+	if ($pythonString =~ /^\s*(if|while)\s*(.*):([^:]+)/ || $pythonString =~ /^\s*(break|continue)/){
+		$pythonString = subset2($pythonString);
 	}
-	if($pythonLine1 =~ /^\s*import.*/ || $pythonLine1 =~ /^(\s*)sys.stdout.write\((.*)\)/ || 
-	$pythonLine1 =~ /(.*)(int\()(.*)(\))/ || $pythonLine1 =~  /range\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/|| $pythonLine1 =~ /.*:$/){
-	$a = subset3($pythonLine1);
+	if($pythonString =~ /^\s*import.*/ || $pythonString =~ /^(\s*)sys.stdout.write\((.*)\)/ || 
+	$pythonString =~ /(.*)(int\()(.*)(\))/ || $pythonString =~  /range\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/|| $pythonString =~ /.*:$/){
+		$pythonString = subset3($pythonString);
 	}
-	return $a;
+	return $pythonString;
 }
 
 
-sub subset0{   #print
+sub subset0{	# print statment
 	$pythonLine = "@_";
 	$perlLine = "@_";
 	if ($pythonLine =~ /^#!/ && $. == 1) {
 		# translate #! line 
 		$perlLine =  "#!/usr/bin/perl -w";
-	} elsif ($pythonLine =~ /^\s*#/ || $line =~ /^\s*$/) {
+	}elsif ($pythonLine =~ /^\s*#/ || $line =~ /^\s*$/) {
 		# Blank & comment lines can be passed unchanged
 		$perlLine = $pythonLine;
-	} elsif ($pythonLine =~ /^(\s*)print\s*"(.*)"\s*$/) {
+	}elsif ($pythonLine =~ /^(\s*)print\s*"(.*)"\s*$/) {
 		$perlLine = "$1print \"$2\\n\"";
 	}elsif($pythonLine =~ /^(\s*)print$/){
 		$perlLine = "$1print \"\\n\"";
+	}elsif ($pythonLine =~ /^(\s*)print\s*(.*)([+\-*\/%])+(.*)\s*$/) {
+		$perlLine = "$1print $2$3$4, \"\\n\"";
 	}elsif($pythonLine =~ /^(\s*)print\s*(.*)\s*$/){
 		$perlLine = "$1print \"$2\\n\"";
 	}
 	return $perlLine;
 }
 
-sub subset1{	#variable and arithmetic operator in print statement
+sub subset1{	# variable
 	$pythonLine = "@_";
 	$perlLine = "@_";
 	if ($pythonLine =~ /^\s*[^0-9][a-zA-Z_0-9]*\s*=\s*/) {	#traslate variable = value line
@@ -158,15 +134,13 @@ sub subset1{	#variable and arithmetic operator in print statement
 		$pythonLine =~ s/^\s+//;
 		$pythonLine =~ s/\s+$//;
 		if(not($pythonLine ~~ @variables)){	# get the variable name and put inside array
-		push @variables, $pythonLine;
+			push @variables, $pythonLine;
 		}
-	}elsif ($pythonLine =~ /^(\s*)print\s*(.*)([+\-*\/%])+(.*)\s*$/) {
-		$perlLine = "$1print $2$3$4, \"\\n\"";
 	}
 	return $perlLine;
 }
 
-sub subset2{
+sub subset2{	# logical operators, comparison operators(numeric only), bitwise operators, single-line if, while, break ,continue
 	$pythonLine = "@_";
 	$perlLine = "@_";
 	$line1 = "";
@@ -175,14 +149,14 @@ sub subset2{
 		$line1 = "$1 (" . runSubsets($2) . "){\n";
 		@lines = split(/;/,$3);
 		foreach $l(@lines){
-		$line2 .= runSubsets($l) . "\n";
+			$line2 .= runSubsets($l) . "\n";
 		}
 		$perlLine = $line1 . $line2 . "}";
 	}elsif($pythonLine =~ /^\s*(break|continue)/){
 		if($1 eq "break"){
-		$pythonLine =~ s/break/last/;
+			$pythonLine =~ s/break/last/;
 		}elsif($1 eq "continue"){
-		$pythonLine =~ s/continue/next/;
+			$pythonLine =~ s/continue/next/;
 		}
 		$perlLine = $pythonLine;
 	}
@@ -203,7 +177,7 @@ sub subset3{
 		$perlLine = $1 . $3;
 	}
 	if($pythonLine =~ /.*:$/){
-		$nOfCarlyBracket++;
+		$nOfOpeningCarlyBracket++;
 		$perlLine =~ s/:$/{/;
 		if ($pythonLine =~/^(\s*)(if|while|elif|else|for)\s*(.*):$/){
 			if($2 eq "for"){
@@ -213,31 +187,21 @@ sub subset3{
 					}
 				$lastIndex = "$4-1";
 				$perlLine = "$1foreach $2 ($3..$lastIndex){";
-				print $perlLine;
 				}
 			}else{
 				$perlLine = "$1$2 (" . runSubsets($3) . "){";
 			}
-			$indentation{$nOfCarlyBracket} = $1;
+			$indentation{$nOfOpeningCarlyBracket} = $1;
 			if ($2 eq "else"){
 				$perlLine = "$1$2\{";
 			}
 		}
 	}
-	#if($pythonLine =~ /range\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/){
-	#	$lastIndex = $2-1;
-	#	print "  $1 $lastIndex abcdef";
-	#}
 	if($perlLine =~ /^\s*(elif)/){   # pythonLine change to what is inside bracket
 		$s = $1;
 		if($s eq "elif"){ 
-		#	$perlLine =~ s/$1/}elsif/;
 			$perlLine =~ s/elif/elsif/;
 		}
-		#else{
-		#	$perlLine =~ s/$1/}$s/;
-		#}
-		#$nOfCarlyBracket--;
 	}
 	return $perlLine;
 }
