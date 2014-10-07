@@ -307,7 +307,25 @@ sub putDollarSign{					#put dollar in front of variable
 					$positionOfVars{pos($string)} = $var;
 				}
 			}
-		}		
+		}
+		
+		while($string =~ m/$var([^a-zA-Z])/g){
+			$InsideQuotes = 0;
+			if(substr($string,pos($string)-(length($var)+2),1) ne "\$"){ 
+				for($i = 0; $i < scalar(@openQuotes); $i++){
+					if(pos($string)-1 > $openQuotes[$i] && pos($string)-1 < $closeQuotes[$i]){
+						$InsideQuotes = 1;
+						last;
+					}
+				}
+				if($InsideQuotes == 0){
+					if(not exists $positionOfVars{pos($string)}){
+						$positionOfVars{pos($string)} = $var;
+					}
+				}
+			}
+		}
+				
 	}
 	foreach my $p (sort {$a<=>$b} keys %positionOfVars ){	#put dollar sign
 		$lenOfVar = length($positionOfVars{$p})+1;
@@ -329,10 +347,13 @@ sub putDollarSign{					#put dollar in front of variable
 
 sub printsubset{ #print subset
 	$string = "@_";
+	$isPrintf = 0;  			# 0 - is not printf, 1 - is printf
+	$isLastComma = 0;			# 0 - the last char is not comma, 1 - the last char is comma
 	chomp $string;
 	$string =~ s/;$//;
 	if ($string =~ /^(\s*)(print\s*)/){
 		@commas = ();	
+		@percentages = ();
 		@openQuotes = ();
 		@closeQuotes = ();
 		$openOrClose = 0;
@@ -365,34 +386,82 @@ sub printsubset{ #print subset
 			}
 		}
 		
-		while($string =~ m/,/g){
+		while($string =~ m/%\w/g){
 			$InsideQuotes = 0;
 			for($i = 0; $i < scalar(@openQuotes); $i++){
 				if(pos($string) > $openQuotes[$i] && pos($string) < $closeQuotes[$i]){
+					push @percentages, pos($string);
+					$isPrintf = 1;
+				}
+			}
+		}
+		
+		
+		if($isPrintf == 0){
+			$lengthOfString = length($string);
+			while($string =~ m/,/g){
+				$InsideQuotes = 0;
+				for($i = 0; $i < scalar(@openQuotes); $i++){
+					if(pos($string) > $openQuotes[$i] && pos($string) < $closeQuotes[$i]){
+						$InsideQuotes = 1;
+						last;
+					}
+				}
+				if($InsideQuotes == 0){
+					push @commas, pos($string);
+				}
+			}
+			foreach my $c (@commas){
+				if(not($lengthOfString == $c)){
+					$index = $c - 1;		
+					substr($string,$index,1," ");
+				}else{
+					$isLastComma = 1;
+					$index = $c - 1;
+					substr($string,$index,1,"");
+				}
+			}
+		}
+	}
+	
+	if($isPrintf == 1){
+		if ($string =~ /^(\s*)print(\s*.*)%(\s*.*)/){
+			$string = "$1printf$2. \"\\n\",$3";
+		}
+	}else{
+		if ($string =~ /^(\s*)(print\s*)\((.*)\)(\s*$)/){
+			$string = "$1$2$3$4";
+		}
+		if ($string =~ /^(\s*)print\s*"(.*)"\s*$/) {
+			if($isLastComma == 1){
+				$string = "$1print \"$2\"";
+			}else{
+				$string = "$1print \"$2\\n\"";
+			}
+		}elsif($string =~ /^(\s*)print$/){
+			$string = "$1print \"\\n\"";
+		}elsif ($string =~ /^(\s*)print\s*(.*)([+\-*\/%])+(.*)\s*$/){
+			$InsideQuotes = 0;
+			for($i = 0; $i < scalar(@openQuotes); $i++){
+				if(pos($3) > $openQuotes[$i] && pos($3) < $closeQuotes[$i]){
 					$InsideQuotes = 1;
 					last;
 				}
 			}
 			if($InsideQuotes == 0){
-				push @commas, pos($string);
+				if($isLastComma == 1){
+					$string = "$1print $2$3$4";
+				}else{	
+					$string = "$1print $2$3$4, \"\\n\"";
+				}
+			}
+		}elsif($string =~ /^(\s*)print\s*(.*)\s*$/){
+			if($isLastComma == 1){
+				$string = "$1print \"$2\"";
+			}else{
+				$string = "$1print \"$2\\n\"";
 			}
 		}
-		foreach my $c (@commas){
-		$index = $c - 1;		
-		substr($string,$index,1," ");
-		}
-	}
-	if ($string =~ /^(\s*)(print\s*)\((.*)\)(\s*$)/){
-		$string = "$1$2$3$4";
-	}
-	if ($string =~ /^(\s*)print\s*"(.*)"\s*$/) {
-		$string = "$1print \"$2\\n\"";
-	}elsif($string =~ /^(\s*)print$/){
-		$string = "$1print \"\\n\"";
-	}elsif ($string =~ /^(\s*)print\s*(.*)([+\-*\/%])+(.*)\s*$/) {
-		$string = "$1print $2$3$4, \"\\n\"";
-	}elsif($string =~ /^(\s*)print\s*(.*)\s*$/){
-		$string = "$1print \"$2\\n\"";
 	}
 	return $string;
 }
