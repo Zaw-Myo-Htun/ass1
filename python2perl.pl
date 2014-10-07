@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-@variables = ();					#all variables detected while processing each line
+%variables = ();					#all variables detected while processing each line
 %indentation = ();					#key - number of open bracket,value - number of spaces in front
 $perlLine = "";						#return from subset methods.
 $result = "";						#final perl line to be printed;
@@ -30,6 +30,7 @@ sub main{
 		$string = runSubsets($string);
 		$string = changeSTDIN($string);
 		$string = putsemicolon($string);
+		$string = changeLen($string);
 		$string = putDollarSign($string);
 		$string = printsubset($string);
 		$string = changeSTDWrite($string);
@@ -41,6 +42,7 @@ sub main{
 		putClosingCarlyBracket($l);  	#have to be here, can't be after runSubsets... (to skip the first while, if , for, etc line)
 		$string = runSubsets($l);
 		$string = putsemicolon($string);
+		$string = changeLen($string);
 		$string = putDollarSign($string);
 		$string = printsubset($string);
 		$string = changeSTDIN($string);
@@ -86,8 +88,13 @@ sub runSubsets{							#for subset1,2 and 3
 		$string = subset2($string);
 	}
 	if($string =~ /^\s*import\s{1}.*/ || $string =~ /^(\s*)sys.stdout.write\((.*)\)/ || 
-	$string =~ /(.*\W)(int\()(.*)(\))/ || $string =~ /.*:$/){
+	   $string =~ /(.*\W)(int\()(.*)(\))/ || $string =~ /.*:$/){
 		$string = subset3($string);
+	}
+	if($string =~ /^(\s*)([^0-9][a-zA-Z_0-9]*).append\((.*)\)/ || 
+	   $string =~ /^(\s*)(.*)([^0-9][a-zA-Z_0-9]*).pop\(\)(.*)/ || 
+	   $string =~ /(^\s*)([^0-9][a-zA-Z_0-9]*\s*=\s*)sys.stdin.readlines\(\)/){
+		$string = subset4($string);
 	}
 	return $string;
 }
@@ -108,12 +115,27 @@ sub subset0{
 sub subset1{	# variable
 	$pythonLine = "@_";
 	$perlLine = "@_";
-	if ($pythonLine =~ /^\s*[^0-9][a-zA-Z_0-9]*\s*=\s*/) {	#traslate variable = value line
+	$type = "";
+	if ($pythonLine =~ /(^\s*[^0-9][a-zA-Z_0-9]*\s*=\s*)(.*)/) {	#traslate variable = value line
+		$value1 = $1;
+		$value2 = $2;
+		if ($2 =~ /^["']/){
+			$type = "string";
+		}elsif($2 =~ /^\[/){
+			$value2 =~ s/^\[/\(/;
+			$value2 =~ s/\]$/\)/;
+			$perlLine = "$value1$value2";
+			$type = "array";
+		}elsif($2 =~ /^\s*sys.stdin.readlines\(\)/){
+			$type = "array";
+		}else{
+			$type = "digit";
+		}
 		$pythonLine =~ s/\s*=.*//;
 		$pythonLine =~ s/^\s+//;
 		$pythonLine =~ s/\s+$//;
-		if(not($pythonLine ~~ @variables)){	# get the variable name and put inside array
-			push @variables, $pythonLine;
+		if(not exists $variables{$pythonLine}){	# get the variable name and put inside array
+			$variables{$pythonLine} = $type;
 		}
 	}
 	return $perlLine;
@@ -161,12 +183,19 @@ sub subset3{
 		$perlLine =~ s/:$/{/;
 		if ($pythonLine =~/^(\s*)(if|while|elif|else|for)\s+(.*):$/ || $pythonLine =~ /^(\s*)(else)\s*(.*):$/){
 			if($2 eq "for"){
-				if($pythonLine =~ /^(\s*)for\s+([^0-9][a-zA-Z_0-9]*)\s+in\s+range\s*\(\s*(.+)\s*,\s*(.+)\s*\)/){
-					if(not($2 ~~ @variables)){
-						push @variables,$2;
+				if($pythonLine =~ /^(\s*)for\s+([^0-9][a-zA-Z_0-9]*)\s+in\s+.*/){
+					#if(not($2 ~~ @variables)){
+					if(not exists $variables{$2}){
+						$variables{$2} = "digit";
+						#push @variables,$2;
 					}
-				$lastIndex = "$4-1";
-				$perlLine = "$1foreach $2 ($3..$lastIndex){";
+					if($pythonLine =~ /^(\s*)for\s+([^0-9][a-zA-Z_0-9]*)\s+in\s+range\s*\(\s*(.+)\s*,\s*(.+)\s*\)/){
+						$lastIndex = "$4-1";
+						$perlLine = "$1foreach $2 ($3..$lastIndex){";
+					}
+					if($pythonLine =~ /^(\s*)for\s+([^0-9][a-zA-Z_0-9]*)\s+in\s+sys.stdin/){
+						$perlLine = "$1foreach $2 (<STDIN>){";
+					}
 				}
 			}else{
 				$perlLine = "$1$2 (" . runSubsets($3) . "){";
@@ -186,6 +215,22 @@ sub subset3{
 	return $perlLine;
 }
 
+sub subset4{
+	$pythonLine = "@_";
+	$perlLine = "@_";
+	if($pythonLine =~ /^(\s*)([^0-9][a-zA-Z_0-9]*).append\((.*)\)/){
+		$perlLine = "$1push $2, $3";
+	}elsif($pythonLine =~ /^(\s*)(.*\W)([^0-9][a-zA-Z_0-9]*).pop\(\)(.*)/){
+		$perlLine = "$1$2pop $3$4";
+	}
+	if ($pythonLine =~ /(^\s*)([^0-9][a-zA-Z_0-9]*)\s*=\s*sys.stdin.readlines\(\)/){
+		$nOfOpeningCarlyBracket++;
+		$indentation{$nOfOpeningCarlyBracket} = $1;
+		$perlLine = "$1while (<STDIN>){\n$1\tpush $2, \$_";
+	}
+	return $perlLine;
+}
+
 sub putsemicolon{					#put ; every single line apart from those start with #!,#,},etc or end with },etc or empty line
 	$string = "@_";
 	my @lines = split /\n/, $string;	
@@ -201,43 +246,57 @@ sub putsemicolon{					#put ; every single line apart from those start with #!,#,
 
 sub putDollarSign{					#put dollar in front of variable
 	$string = "@_";
-	%vars = ();						#key - end position of variables found(matched regex) in line, value - variable names
+	%positionOfVars = ();						#key - end position of variables found(matched regex) in line, value - variable names
 	@openQuotes = ();
 	@closeQuotes = ();
 	$openOrClose = 0;
 	$index = 0;
 	$InsideQuotes = 0;				#0-not inside quotes , 1-inside quotes
 	$num = 0;
-	foreach my $var (@variables){
-			while($string =~ m/(.?)"/g){  #get the positons of " to be used below to make sure that the string inside the " -
-											#that have the same name as variable won't be treated as variable and will not push
-											 # to %vars
-				if($1 eq "\""){
-					@quotes = ();
-					push @quotes,pos($string)-1;
-					push @quotes,pos($string);
-					foreach $q(@quotes){
-						if ($openOrClose == 0){
-							push @openQuotes, $q;
-							$openOrClose = 1;
-						}else{
-							push @closeQuotes, $q;
-							$openOrClose = 0;
-						}
-					}
-				}
-				if($1 ne "\"" && $1 ne "\\"){
+	foreach my $var (keys %variables){
+		while($string =~ m/(.?)"/g){  #get the positons of " to be used below to make sure that the string inside the " -
+										#that have the same name as variable won't be treated as variable and will not push
+										 # to %vars
+			if($1 eq "\""){
+				@quotes = ();
+				push @quotes,pos($string)-1;
+				push @quotes,pos($string);
+				foreach $q(@quotes){
 					if ($openOrClose == 0){
-						push @openQuotes, pos($string);
+						push @openQuotes, $q;
 						$openOrClose = 1;
 					}else{
-						push @closeQuotes, pos($string);
+						push @closeQuotes, $q;
 						$openOrClose = 0;
 					}
 				}
 			}
-			while($string =~ m/^$var[^a-zA-Z]/g){
-				$InsideQuotes = 0;
+			if($1 ne "\"" && $1 ne "\\"){
+				if ($openOrClose == 0){
+					push @openQuotes, pos($string);
+					$openOrClose = 1;
+				}else{
+					push @closeQuotes, pos($string);
+					$openOrClose = 0;
+				}
+			}
+		}
+		while($string =~ m/^$var[^a-zA-Z]/g){
+			$InsideQuotes = 0;
+			for($i = 0; $i < scalar(@openQuotes); $i++){
+				if(pos($string)-1 > $openQuotes[$i] && pos($string)-1 < $closeQuotes[$i]){
+					$InsideQuotes = 1;
+					last;
+				}
+			}
+			if($InsideQuotes == 0){
+				$positionOfVars{pos($string)} = $var;
+			}
+		}
+		
+		while($string =~ m/([^a-zA-Z])$var([^a-zA-Z])/g){
+			$InsideQuotes = 0;
+			if($1 ne "\$"){ 
 				for($i = 0; $i < scalar(@openQuotes); $i++){
 					if(pos($string)-1 > $openQuotes[$i] && pos($string)-1 < $closeQuotes[$i]){
 						$InsideQuotes = 1;
@@ -245,29 +304,24 @@ sub putDollarSign{					#put dollar in front of variable
 					}
 				}
 				if($InsideQuotes == 0){
-					$vars{pos($string)} = $var;
+					$positionOfVars{pos($string)} = $var;
 				}
 			}
-			
-			while($string =~ m/([^a-zA-Z])$var([^a-zA-Z])/g){
-				$InsideQuotes = 0;
-				if($1 ne "\$"){ 
-					for($i = 0; $i < scalar(@openQuotes); $i++){
-						if(pos($string)-1 > $openQuotes[$i] && pos($string)-1 < $closeQuotes[$i]){
-							$InsideQuotes = 1;
-							last;
-						}
-					}
-					if($InsideQuotes == 0){
-						$vars{pos($string)} = $var;
-					}
-				}
-			}		
+		}		
 	}
-	foreach my $p (sort {$a<=>$b} keys %vars ){	#put dollar sign
-		$lenOfVar = length($vars{$p})+1;
+	foreach my $p (sort {$a<=>$b} keys %positionOfVars ){	#put dollar sign
+		$lenOfVar = length($positionOfVars{$p})+1;
 		$index = $p - $lenOfVar + $num;			#index - index of first character of variable
-		substr($string,$index,0,"\$");
+		if($variables{$positionOfVars{$p}} eq "digit" || $variables{$positionOfVars{$p}} eq "string" ){
+			substr($string,$index,0,"\$");
+		}else{
+			my $char = substr($string, $p-1, 1);
+			if($char eq "["){
+				substr($string,$index,0,"\$");
+			}else{
+				substr($string,$index,0,"\@");
+			}
+		}
 		$num++;									#add one because length of result line have been added $
 	}
 	return $string;
@@ -343,6 +397,24 @@ sub printsubset{ #print subset
 	return $string;
 }
 
+sub changeLen{
+	$string = "@_";
+	if($string =~ /.*\Wlen\((.*)\)/){
+		$value = $1;
+		$value =~ s/^\s+//;
+		$value =~ s/\s+$//;
+		if($value =~ /^\[/ || $variables{$value} eq "array"){
+			if($value =~ /^\[/){
+				$string =~ s/\[//;
+				$string =~ s/\]//;
+			}
+			$string =~ s/len/scalar/;
+		}else{
+			$string =~ s/len/length/;
+		}
+	}
+	return $string;
+}
 sub changeSTDIN{					# change sys.stdin.readline to STDIN ...
 	$string = "@_";
 	if($string =~ /.*sys.stdin.readline\(\)/){
